@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COSCUP 2020-2024 資料視覺化</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.0.0/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.2/echarts.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2ecc71;
+            --accent-color: #e74c3c;
+            --dark-color: #2c3e50;
+            --light-color: #ecf0f1;
+            --header-height: 60px;
+            --sidebar-width: 220px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        
+        body {
+            background-color: #f8f9fa;
+        }
+        
+        .header {
+            height: var(--header-height);
+            background-color: var(--dark-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 100;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .header .subtitle {
+            margin-left: 20px;
+            font-size: 1rem;
+            opacity: 0.8;
+        }
+        
+        .container {
+            display: flex;
+            margin-top: var(--header-height);
+            min-height: calc(100vh - var(--header-height));
+        }
+        
+        .sidebar {
+            width: var(--sidebar-width);
+            background-color: white;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+            position: fixed;
+            height: calc(100vh - var(--header-height));
+            overflow-y: auto;
+        }
+        
+        .sidebar h2 {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: var(--dark-color);
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .nav-item {
+            padding: 10px 15px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #555;
+        }
+        
+        .nav-item:hover, .nav-item.active {
+            background-color: #f0f7ff;
+            color: var(--primary-color);
+        }
+        
+        .main-content {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        
+        .dashboard-section {
+            display: none;
+            margin-bottom: 30px;
+        }
+        
+        .dashboard-section.active {
+            display: block;
+        }
+        
+        .chart-container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .chart-title {
+            font-size: 1.2rem;
+            color: var(--dark-color);
+        }
+        
+        .chart-filters {
+            display: flex;
+            gap: 10px;
+        }
+        
+        select, button {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+            font-size: 0.9rem;
+        }
+        
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+        
+        .chart {
+            width: 100%;
+            height: 400px;
+        }
+        
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        
+        .chart-grid .chart-container {
+            margin-bottom: 0;
+        }
+        
+        .loader {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 400px;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid var(--primary-color);
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .network-tooltip {
+            position: absolute;
+            background-color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            pointer-events: none;
+            font-size: 0.9rem;
+            z-index: 1000;
+            max-width: 220px;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .data-table th, .data-table td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .data-table th {
+            background-color: #f5f5f5;
+            font-weight: 600;
+        }
+        
+        .data-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        @media (max-width: 1200px) {
+            .chart-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 180px;
+            }
+            .main-content {
+                margin-left: 180px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>COSCUP 開源人年會分析</h1>
+        <span class="subtitle">2020-2024 資料視覺化</span>
+    </div>
+    
+    <div class="container">
+        <div class="sidebar">
+            <h2>分析面板</h2>
+            <div class="nav-item active" data-section="overview">會議概況</div>
+            <div class="nav-item" data-section="topics">主題演變</div>
+            <div class="nav-item" data-section="speakers">講者分析</div>
+            <div class="nav-item" data-section="structure">會議結構</div>
+            <div class="nav-item" data-section="network">社群網絡</div>
+        </div>
+        
+        <div class="main-content">
+            <!-- 會議概況 -->
+            <div class="dashboard-section active" id="overview">
+                <h2>會議概況</h2>
+                
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">COSCUP 2020-2024 年會規模變化</h3>
+                    </div>
+                    <div id="growthChart" class="chart"></div>
+                </div>
+                
+                <div class="chart-grid">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">議程語言分佈</h3>
+                        </div>
+                        <div id="languageChart" class="chart"></div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">議程類型分佈</h3>
+                        </div>
+                        <div id="sessionTypeChart" class="chart"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 主題演變 -->
+            <div class="dashboard-section" id="topics">
+                <h2>主題演變</h2>
+                
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">主題關鍵詞熱力圖</h3>
+                    </div>
+                    <div id="keywordHeatmap" class="chart"></div>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">主題趨勢變化</h3>
+                    </div>
+                    <div id="topicTrendsChart" class="chart"></div>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">議程軌數量變化</h3>
+                    </div>
+                    <div id="trackEvolutionChart" class="chart"></div>
+                </div>
+            </div>
+            
+            <!-- 講者分析 -->
+            <div class="dashboard-section" id="speakers">
+                <h2>講者分析</h2>
+                
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">講者參與度趨勢</h3>
+                    </div>
+                    <div id="speakerTrendsChart" class="chart"></div>
+                </div>
+                
+                <div class="chart-grid">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">重要講者社群分佈</h3>
+                        </div>
+                        <div id="speakerCommunityChart" class="chart"></div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">講者公司/組織分佈</h3>
+                        </div>
+                        <div id="companyDistributionChart" class="chart"></div>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">高影響力講者</h3>
+                    </div>
+                    <div id="keySpseakersTable"></div>
+                </div>
+            </div>
+            
+            <!-- 會議結構 -->
+            <div class="dashboard-section" id="structure">
+                <h2>會議結構</h2>
+                
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">議程時間分佈熱力圖</h3>
+                    </div>
+                    <div id="timeDistributionChart" class="chart"></div>
+                </div>
+                
+                <div class="chart-grid">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">議程時長分佈</h3>
+                        </div>
+                        <div id="durationDistributionChart" class="chart"></div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">每日議程分佈</h3>
+                        </div>
+                        <div id="dayDistributionChart" class="chart"></div>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">議程室使用情況</h3>
+                    </div>
+                    <div id="roomUsageChart" class="chart"></div>
+                </div>
+            </div>
+            
+            <!-- 社群網絡 -->
+            <div class="dashboard-section" id="network">
+                <h2>社群網絡</h2>
+                
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">講者合作網絡圖</h3>
+                        <div class="chart-filters">
+                            <select id="networkYearFilter">
+                                <option value="all">所有年份</option>
+                                <option value="2020">2020</option>
+                                <option value="2021">2021</option>
+                                <option value="2022">2022</option>
+                                <option value="2023">2023</option>
+                                <option value="2024">2024</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="speakerNetworkChart" class="chart"></div>
+                </div>
+                
+                <div class="chart-grid">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">社群分布分析</h3>
+                        </div>
+                        <div id="communityAnalysisChart" class="chart"></div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">跨年度合作網絡</h3>
+                        </div>
+                        <div id="collaborationTrendChart" class="chart"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 模擬數據
+        // 實際應用中，可以使用 AJAX 或 Fetch API 從後端載入處理過的數據
+        
+        // 模擬 JSON 結構
+        const mockData = {
+            conference_growth: {
+                years: ['2020', '2021', '2022', '2023', '2024'],
+                sessions: [120, 145, 160, 175, 190],
+                speakers: [85, 100, 110, 125, 140],
+                tracks: [10, 12, 14, 15, 16]
+            },
+            language_distribution: {
+                years: ['2020', '2021', '2022', '2023', '2024'],
+                'zh-TW': [75, 70, 65, 62, 60],
+                'en': [25, 30, 35, 38, 40]
+            },
+            session_types: {
+                years: ['2020', '2021', '2022', '2023', '2024'],
+                talk: [90, 105, 115, 120, 130],
+                workshop: [20, 25, 30, 35, 40],
+                keynote: [10, 15, 15, 20, 20]
+            },
+            topic_keywords: {
+                '2020': {
+                    'Linux': 45, 'Python': 38, 'Docker': 35, 'DevOps': 30, 'Web': 28,
+                    'AI': 25, 'Cloud': 22, 'Kubernetes': 20, 'Security': 18, 'Database': 15
+                },
+                '2021': {
+                    'Kubernetes': 48, 'Cloud': 42, 'DevOps': 40, 'Linux': 35, 'Python': 32,
+                    'Docker': 30, 'Security': 25, 'AI': 22, 'Database': 20, 'Web': 18
+                },
+                '2022': {
+                    'Cloud': 50, 'Kubernetes': 45, 'DevOps': 42, 'AI': 38, 'Security': 35,
+                    'Linux': 30, 'Python': 28, 'Database': 25, 'Docker': 22, 'Web': 20
+                },
+                '2023': {
+                    'AI': 55, 'Cloud': 48, 'Kubernetes': 42, 'Security': 40, 'DevOps': 35,
+                    'Database': 30, 'Linux': 28, 'Python': 25, 'Docker': 20, 'Web': 18
+                },
+                '2024': {
+                    'AI': 60, 'Security': 52, 'Cloud': 45, 'Kubernetes': 40, 'Database': 35,
+                    'DevOps': 32, 'Linux': 25, 'Python': 22, 'Docker': 18, 'Web': 15
+                }
+            },
+            topic_trends: {
+                years: ['2020', '2021', '2022', '2023', '2024'],
+                '主題1 (系統運維)': [25, 30, 28, 25, 20],
+                '主題2 (人工智慧)': [15, 18, 25, 30, 38],
+                '主題3 (雲端技術)': [20, 22, 25, 28, 25],
+                '主題4 (資訊安全)': [12, 15, 18, 22, 25],
+                '主題5 (程式開發)': [28, 25, 22, 20, 18]
+            },
+            track_evolution: {
+                years: ['2020', '2021', '2022', '2023', '2024'],
+                tracks: [10, 12, 14, 15, 16]
+            },
+            speaker_trends: {
+                years: ['2020', '2021', '2022', '2023', '2024'],
+                total_speakers: [85, 100, 110, 125, 140],
+                new_speakers: [85, 50, 40, 45, 50],
+                continuing_speakers: [0, 50, 70, 80, 90]
+            },
+            time_distribution: {
+                hours: ['9', '10', '11', '12', '13', '14', '15', '16', '17'],
+                '2020': [8, 15, 15, 5, 12, 18, 15, 18, 8],
+                '2021': [10, 18, 18, 6, 15, 20, 18, 20, 10],
+                '2022': [12, 20, 20, 8, 18, 22, 20, 22, 12],
+                '2023': [15, 22, 22, 8, 20, 25, 22, 25, 15],
+                '2024': [18, 25, 25, 10, 22, 28, 25, 28, 18]
+            },
+            duration_distribution: {
+                years: ['2020', '2021', '2022', '2023', '2024'],
+                '短講 (≤30分鐘)': [30, 35, 40, 45, 50],
+                '標準 (31-60分鐘)': [70, 85, 90, 95, 100],
+                '長講 (>60分鐘)': [20, 25, 30, 35, 40]
+            },
+            key_speakers: [
+                { id: 1, name: '王小明', company: 'ABC科技', sessions_count: 8, importance_score: 0.85, community: 0 },
+                { id: 2, name: '李大華', company: 'XYZ軟體', sessions_count: 7, importance_score: 0.78, community: 1 },
+                { id: 3, name: '張小玲', company: '開源基金會', sessions_count: 6, importance_score: 0.72, community: 0 },
+                { id: 4, name: '陳大為', company: '科技公司', sessions_count: 5, importance_score: 0.68, community: 2 },
+                { id: 5, name: '黃小琳', company: '雲端服務', sessions_count: 5, importance_score: 0.65, community: 1 }
+            ]
+        };
+        
+        // 隨機生成講者網絡數據
+        function generateSpeakerNetwork() {
+            const nodes = [];
+            const links = [];
+            const communities = [0, 1, 2, 3, 4];
+            
+            // 生成節點
+            for (let i = 1; i <= 50; i++) {
+                const community = communities[Math.floor(Math.random() * communities.length)];
+                nodes.push({
+                    id: `speaker_${i}`,
+                    name: `講者${i}`,
+                    community: community,
+                    sessions_count: Math.floor(Math.random() * 5) + 1
+                });
+            }
+            
+            // 生成連結
+            for (let i = 0; i < nodes.length; i++) {
+                const source = nodes[i];
+                // 同社群內更可能合作
+                const sameCommLinks = Math.floor(Math.random() * 3) + 1;
+                const diffCommLinks = Math.floor(Math.random() * 2);
+                
+                // 同社群連結
+                let count = 0;
+                while (count < sameCommLinks) {
+                    const targetIndex = Math.floor(Math.random() * nodes.length);
+                    if (i !== targetIndex && nodes[targetIndex].community === source.community) {
+                        links.push({
+                            source: source.id,
+                            target: nodes[targetIndex].id,
+                            value: Math.floor(Math.random() * 3) + 1
+                        });
+                        count++;
+                    }
+                }
+                
+                // 不同社群連結
+                count = 0;
+                while (count < diffCommLinks) {
+                    const targetIndex = Math.floor(Math.random() * nodes.length);
+                    if (i !== targetIndex && nodes[targetIndex].community !== source.community) {
+                        links.push({
+                            source: source.id,
+                            target: nodes[targetIndex].id,
+                            value: Math.floor(Math.random() * 2) + 1
+                        });
+                        count++;
+                    }
+                }
+            }
+            
+            return { nodes, links };
+        }
+        
+        // 初始化頁面
+        document.addEventListener('DOMContentLoaded', function() {
+            // 切換導航區塊
+            const navItems = document.querySelectorAll('.nav-item');
+            
+            navItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    // 移除所有激活狀態
+                    navItems.forEach(nav => nav.classList.remove('active'));
+                    document.querySelectorAll('.dashboard-section').forEach(section => section.classList.remove('active'));
+                    
+                    // 添加當前激活狀態
+                    this.classList.add('active');
+                    const sectionId = this.getAttribute('data-section');
+                    document.getElementById(sectionId).classList.add('active');
+                });
+            });
+            
+            // 初始化圖表
+            initCharts();
+        });
+        
+        // 初始化所有圖表
+        function initCharts() {
+            // 會議概況
+            initGrowthChart();
+            initLanguageChart();
+            initSessionTypeChart();
+            
+            // 主題演變
+            initKeywordHeatmap();
+            initTopicTrendsChart();
+            initTrackEvolutionChart();
+            
+            // 講者分析
+            initSpeakerTrendsChart();
+            initSpeakerCommunityChart();
+            initCompanyDistributionChart();
+            initKeySpeakersTable();
+            
+            // 會議結構
+            initTimeDistributionChart();
+            initDurationDistributionChart();
+            initDayDistributionChart();
+            initRoomUsageChart();
+            
+            // 社群網絡
+            initSpeakerNetworkChart();
+            initCommunityAnalysisChart();
+            initCollaborationTrendChart();
+        }
+        
+        // 會議概況圖表
+        function initGrowthChart() {
+            const chart = echarts.init(document.getElementById('growthChart'));
+            const data = mockData.conference_growth;
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    }
+                },
+                legend: {
+                    data: ['議程數', '講者數', '議程軌數']
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: data.years
+                },
+                yAxis: {
+                    type: 'value'
+                },
+                series: [
+                    {
+                        name: '議程數',
+                        type: 'bar',
+                        data: data.sessions,
+                        itemStyle: {
+                            color: '#3498db'
+                        }
+                    },
+                    {
+                        name: '講者數',
+                        type: 'bar',
+                        data: data.speakers,
+                        itemStyle: {
+                            color: '#2ecc71'
+                        }
+                    },
+                    {
+                        name: '議程軌數',
+                        type: 'bar',
+                        data: data.tracks,
+                        itemStyle: {
+                            color: '#e74c3c'
+                        }
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function initLanguageChart() {
+            const chart = echarts.init(document.getElementById('languageChart'));
+            const data = mockData.language_distribution;
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    },
+                    formatter: function(params) {
+                        return `${params[0].name}年<br>
+                                中文: ${params[0].value}%<br>
+                                英文: ${params[1].value}%`;
+                    }
+                },
+                legend: {
+                    data: ['中文', '英文']
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: data.years
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLabel: {
+                        formatter: '{value}%'
+                    }
+                },
+                series: [
+                    {
+                        name: '中文',
+                        type: 'bar',
+                        stack: 'total',
+                        emphasis: {
+                            focus: 'series'
+                        },
+                        data: data['zh-TW'],
+                        itemStyle: {
+                            color: '#3498db'
+                        }
+                    },
+                    {
+                        name: '英文',
+                        type: 'bar',
+                        stack: 'total',
+                        emphasis: {
+                            focus: 'series'
+                        },
+                        data: data['en'],
+                        itemStyle: {
+                            color: '#2ecc71'
+                        }
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function initSessionTypeChart() {
+            const chart = echarts.init(document.getElementById('sessionTypeChart'));
+            const data = mockData.session_types;
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    }
+                },
+                legend: {
+                    data: ['一般議程', '工作坊', '主題演講']
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: data.years
+                },
+                yAxis: {
+                    type: 'value'
+                },
+                series: [
+                    {
+                        name: '一般議程',
+                        type: 'bar',
+                        stack: 'total',
+                        emphasis: {
+                            focus: 'series'
+                        },
+                        data: data.talk,
+                        itemStyle: {
+                            color: '#3498db'
+                        }
+                    },
+                    {
+                        name: '工作坊',
+                        type: 'bar',
+                        stack: 'total',
+                        emphasis: {
+                            focus: 'series'
+                        },
+                        data: data.workshop,
+                        itemStyle: {
+                            color: '#2ecc71'
+                        }
+                    },
+                    {
+                        name: '主題演講',
+                        type: 'bar',
+                        stack: 'total',
+                        emphasis: {
+                            focus: 'series'
+                        },
+                        data: data.keynote,
+                        itemStyle: {
+                            color: '#e74c3c'
+                        }
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        // 主題演變圖表
+        function initKeywordHeatmap() {
+            const chart = echarts.init(document.getElementById('keywordHeatmap'));
+            const data = mockData.topic_keywords;
+            
+            // 準備熱力圖數據
+            const years = Object.keys(data).sort();
+            // 獲取所有關鍵詞
+            const allKeywords = new Set();
+            for (const year in data) {
+                Object.keys(data[year]).forEach(keyword => allKeywords.add(keyword));
+            }
+            const keywords = Array.from(allKeywords);
+            
+            // 建立熱力圖數據
+            const heatmapData = [];
+            keywords.forEach((keyword, keywordIndex) => {
+                years.forEach((year, yearIndex) => {
+                    heatmapData.push([
+                        yearIndex,
+                        keywordIndex,
+                        data[year][keyword] || 0
+                    ]);
+                });
+            });
+            
+            const option = {
+                tooltip: {
+                    position: 'top',
+                    formatter: function(params) {
+                        const year = years[params.value[0]];
+                        const keyword = keywords[params.value[1]];
+                        const value = params.value[2];
+                        return `${year}年: ${keyword}<br>頻率: ${value}`;
+                    }
+                },
+                grid: {
+                    left: '3%',
+                    right: '7%',
+                    bottom: '10%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: years,
+                    splitArea: {
+                        show: true
+                    }
+                },
+                yAxis: {
+                    type: 'category',
+                    data: keywords,
+                    splitArea: {
+                        show: true
+                    }
+                },
+                visualMap: {
+                    min: 0,
+                    max: 60,
+                    calculable: true,
+                    orient: 'horizontal',
+                    left: 'center',
+                    bottom: '0%',
+                    inRange: {
+                        color: ['#ebedf0', '#c6e48b', '#7bc96f', '#239a3b', '#196127']
+                    }
+                },
+                series: [
+                    {
+                        name: '關鍵詞頻率',
+                        type: 'heatmap',
+                        data: heatmapData,
+                        label: {
+                            show: false
+                        },
+                        emphasis: {
+                            itemStyle: {
+                                shadowBlur: 10,
+                                shadowColor: 'rgba(0, 0, 0, 0.5)'
+                            }
+                        }
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function initTopicTrendsChart() {
+            const chart = echarts.init(document.getElementById('topicTrendsChart'));
+            const data = mockData.topic_trends;
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    }
+                },
+                legend: {
+                    data: Object.keys(data).filter(key => key !== 'years')
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: data.years
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLabel: {
+                        formatter: '{value}%'
+                    }
+                },
+                series: Object.keys(data)
+                    .filter(key => key !== 'years')
+                    .map(topic => ({
+                        name: topic,
+                        type: 'line',
+                        data: data[topic],
+                        emphasis: {
+                            focus: 'series'
+                        },
+                        smooth: true
+                    }))
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function initTrackEvolutionChart() {
+            const chart = echarts.init(document.getElementById('trackEvolutionChart'));
+            const data = mockData.track_evolution;
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    }
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: data.years
+                },
+                yAxis: {
+                    type: 'value'
+                },
+                series: [
+                    {
+                        name: '議程軌數量',
+                        type: 'bar',
+                        data: data.tracks,
+                        itemStyle: {
+                            color: '#3498db'
+                        },
+                        label: {
+                            show: true,
+                            position: 'top'
+                        }
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        // 講者分析圖表
+        function initSpeakerTrendsChart() {
+            const chart = echarts.init(document.getElementById('speakerTrendsChart'));
+            const data = mockData.speaker_trends;
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    }
+                },
+                legend: {
+                    data: ['總講者數', '新講者', '持續參與講者']
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: data.years
+                },
+                yAxis: {
+                    type: 'value'
+                },
+                series: [
+                    {
+                        name: '總講者數',
+                        type: 'line',
+                        data: data.total_speakers,
+                        itemStyle: {
+                            color: '#3498db'
+                        },
+                        smooth: true,
+                        lineStyle: {
+                            width: 3
+                        },
+                        symbol: 'circle',
+                        symbolSize: 8
+                    },
+                    {
+                        name: '新講者',
+                        type: 'bar',
+                        data: data.new_speakers,
+                        itemStyle: {
+                            color: '#2ecc71'
+                        }
+                    },
+                    {
+                        name: '持續參與講者',
+                        type: 'bar',
+                        data: data.continuing_speakers,
+                        itemStyle: {
+                            color: '#e74c3c'
+                        }
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function initSpeakerCommunityChart() {
+            const chart = echarts.init(document.getElementById('speakerCommunityChart'));
+            
+            // 模擬數據
+            const communitySizes = [
+                { value: 35, name: '社群1 (系統/運維)' },
+                { value: 25, name: '社群2 (開發/程式語言)' },
+                { value: 20, name: '社群3 (資料/AI)' },
+                { value: 15, name: '社群4 (雲端/容器)' },
+                { value: 10, name: '社群5 (安全/隱私)' }
+            ];
+            
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    formatter: '{a} <br/>{b}: {c} ({d}%)'
+                },
+                legend: {
+                    orient: 'vertical',
+                    right: 10,
+                    top: 'center',
+                    data: communitySizes.map(item => item.name)
+                },
+                series: [
+                    {
+                        name: '社群分布',
+                        type: 'pie',
+                        radius: ['50%', '70%'],
+                        avoidLabelOverlap: false,
+                        itemStyle: {
+                            borderRadius: 10,
+                            borderColor: '#fff',
+                            borderWidth: 2
+                        },
+                        label: {
+                            show: false,
+                            position: 'center'
+                        },
+                        emphasis: {
+                            label: {
+                                show: true,
+                                fontSize: '18',
+                                fontWeight: 'bold'
+                            }
+                        },
+                        labelLine: {
+                            show: false
+                        },
+                        data: communitySizes
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function initCompanyDistributionChart() {
+            const chart = echarts.init(document.getElementById('companyDistributionChart'));
+            
+            // 模擬數據
+            const companyData = [
+                { value: 10, name: '開源基金會' },
+                { value: 8, name: '科技公司' },
+                { value: 7, name: '軟體公司' },
+                { value: 6, name: '雲端服務商' },
+                { value: 5, name: '資安公司' },
+                { value: 15, name: '其他' }
+            ];
+            
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    formatter: '{a} <br/>{b}: {c} ({d}%)'
+                },
+                legend: {
+                    orient: 'vertical',
+                    right: 10,
+                    top: 'center',
+                    data: companyData.map(item => item.name)
+                },
+                series: [
+                    {
+                        name: '公司/組織分布',
+                        type: 'pie',
+                        radius: '55%',
+                        center: ['40%', '50%'],
+                        data: companyData,
+                        emphasis: {
+                            itemStyle: {
+                                shadowBlur: 10,
+                                shadowOffsetX: 0,
+                                shadowColor: 'rgba(0, 0, 0, 0.5)'
+                            }
+                        }
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function initKeySpeakersTable() {
+            const tableContainer = document.getElementById('keySpseakersTable');
+            const speakers = mockData.key_speakers;
+            
+            // 建立表格
+            const table = document.createElement('table');
+            table.className = 'data-table';
+            
+            // 表頭
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            ['姓名', '組織/公司', '議程數', '影響力分數', '社群'].forEach(text => {
+                const th = document.createElement('th');
+                th.textContent = text;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            
+            // 表體
+            const tbody = document.createElement('tbody');
+            speakers.forEach(speaker => {
+                const row = document.createElement('tr');
+                
+                const nameCell = document.createElement('td');
+                nameCell.textContent = speaker.name;
+                row.appendChild(nameCell);
+                
+                const companyCell = document.createElement('td');
+                companyCell.textContent = speaker.company;
+                row.appendChild(companyCell);
+                
+                const sessionsCell = document.createElement('td');
+                sessionsCell.textContent = speaker.sessions_count;
+                row.appendChild(sessionsCell);
+                
+                const scoreCell = document.createElement('td');
+                scoreCell.textContent = speaker.importance_score.toFixed(2);
+                row.appendChild(scoreCell);
+                
+                const communityCell = document.createElement('td');
+                communityCell.textContent = `社群${speaker.community + 1}`;
+                row.appendChild(communityCell);
+                
+                tbody.appendChild(row);
+            });
+            table.appendChild(tbody);
+            
+            tableContainer.appendChild(table);
+        }
+        
+        // 會議結構圖表
+        function initTimeDistributionChart() {
+            const chart = echarts.init(document.getElementById('timeDistributionChart'));
+            const data = mockData.time_distribution;
+            
+            const hours = data.hours;
+            const years = Object.keys(data).filter(key => key !== 'hours');
+            
+            // 準備熱力圖數據
+            const heatmapData = [];
+            years.forEach((year, yearIndex) => {
+                hours.forEach((hour, hourIndex) => {
+                    heatmapData.push([
+                        hourIndex,
+                        yearIndex,
+                        data[year][hourIndex]
+                    ]);
+                });
+            });
+            
+            const option = {
+                tooltip: {
+                    position: 'top',
+                    formatter: function(params) {
+                        const hour = hours[params.value[0]];
+                        const year = years[params.value[1]];
+                        const value = params.value[2];
+                        return `${year}年 ${hour}:00<br>議程數: ${value}`;
+                    }
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '10%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: hours.map(h => `${h}:00`),
+                    splitArea: {
+                        show: true
+                    }
+                },
+                yAxis: {
+                    type: 'category',
+                    data: years,
+                    splitArea: {
+                        show: true
+                    }
+                },
+                visualMap: {
+                    min: 0,
+                    max: 30,
+                    calculable: true,
+                    orient: 'horizontal',
+                    left: 'center',
+                    bottom: '0%',
+                    inRange: {
+                        color: ['#ebedf0', '#c6e48b', '#7bc96f', '#239a3b', '#196127']
+                    }
+                },
+                series: [
+                    {
+                        name: '議程數量',
+                        type: 'heatmap',
+                        data: heatmapData,
+                        label: {
+                            show: true
+                        },
+                        emphasis: {
+                            itemStyle: {
+                                shadowBlur: 10,
+                                shadowColor: 'rgba(0, 0, 0, 0.5)'
+                            }
+                        }
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function initDurationDistributionChart() {
+            const chart = echarts.init(document.getElementById('durationDistributionChart'));
+            const data = mockData.duration_distribution;
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    }
+                },
+                legend: {
+                    data: Object.keys(data).filter(key => key !== 'years')
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: data.years
+                },
+                yAxis: {
+                    type: 'value'
+                },
+                series: Object.keys(data)
+                    .filter(key => key !== 'years')
+                    .map((duration, index) => ({
+                        name: duration,
+                        type: 'bar',
+                        stack: 'total',
+                        emphasis: {
+                            focus: 'series'
+                        },
+                        data: data[duration]
+                    }))
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function initDayDistributionChart() {
+            const chart = echarts.init(document.getElementById('dayDistributionChart'));
+            
+            // 模擬數據
+            const data = {
+                '2020': { '週六': 70, '週日': 50 },
+                '2021': { '週六': 80, '週日': 65 },
+                '2022': { '週六': 85, '週日': 75 },
+                '2023': { '週六': 90, '週日': 85 },
+                '2024': { '週六': 95, '週日': 95 }
+            };
+            
+            const years = Object.keys(data);
+            const days = ['週六', '週日'];
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    }
+                },
+                legend: {
+                    data: days
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: years
+                },
+                yAxis: {
+                    type: 'value'
+                },
+                series: days.map(day => ({
+                    name: day,
+                    type: 'bar',
+                    data: years.map(year => data[year][day])
+                }))
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function initRoomUsageChart() {
+            const chart = echarts.init(document.getElementById('roomUsageChart'));
+            
+            // 模擬數據 - 議程室使用情況
+            const rooms = ['R0', 'R1', 'R2', 'R3', 'H0', 'H1', 'H2', 'H3', 'H4'];
+            const years = ['2020', '2021', '2022', '2023', '2024'];
+            
+            // 建立隨機數據
+            const data = [];
+            years.forEach((year, yearIndex) => {
+                rooms.forEach((room, roomIndex) => {
+                    // 根據年份逐漸增加議程室的使用量
+                    const baseValue = (roomIndex < 4) ? 20 : 15; // 主要場地使用量較大
+                    const value = Math.floor(baseValue + Math.random() * 10 + yearIndex * 2);
+                    
+                    // 有些議程室在某些年份可能不存在
+                    if (roomIndex >= 6 && yearIndex < 2) {
+                        data.push([roomIndex, yearIndex, 0]);
+                    } else {
+                        data.push([roomIndex, yearIndex, value]);
+                    }
+                });
+            });
+            
+            const option = {
+                tooltip: {
+                    position: 'top',
+                    formatter: function(params) {
+                        const room = rooms[params.value[0]];
+                        const year = years[params.value[1]];
+                        const value = params.value[2];
+                        return `${year}年 ${room}<br>議程數: ${value}`;
+                    }
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '10%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: rooms,
+                    splitArea: {
+                        show: true
+                    }
+                },
+                yAxis: {
+                    type: 'category',
+                    data: years,
+                    splitArea: {
+                        show: true
+                    }
+                },
+                visualMap: {
+                    min: 0,
+                    max: 30,
+                    calculable: true,
+                    orient: 'horizontal',
+                    left: 'center',
+                    bottom: '0%',
+                    inRange: {
+                        color: ['#ebedf0', '#c6e48b', '#7bc96f', '#239a3b', '#196127']
+                    }
+                },
+                series: [
+                    {
+                        name: '議程數量',
+                        type: 'heatmap',
+                        data: data,
+                        label: {
+                            show: true
+                        },
+                        emphasis: {
+                            itemStyle: {
+                                shadowBlur: 10,
+                                shadowColor: 'rgba(0, 0, 0, 0.5)'
+                            }
+                        }
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        // 社群網絡圖表
+        function initSpeakerNetworkChart() {
+            const chart = echarts.init(document.getElementById('speakerNetworkChart'));
+            const networkData = generateSpeakerNetwork();
+            
+            // 社群顏色
+            const communityColors = [
+                '#3498db', // 藍色
+                '#2ecc71', // 綠色
+                '#e74c3c', // 紅色
+                '#f39c12', // 橙色
+                '#9b59b6'  // 紫色
+            ];
+            
+            // 將節點數據轉換為ECharts格式
+            const nodes = networkData.nodes.map(node => ({
+                id: node.id,
+                name: node.name,
+                symbolSize: 10 + (node.sessions_count * 3),
+                value: node.sessions_count,
+                category: node.community,
+                label: {
+                    show: node.sessions_count > 3
+                },
+                itemStyle: {
+                    color: communityColors[node.community]
+                }
+            }));
+            
+            // 將連結數據轉換為ECharts格式
+            const links = networkData.links.map(link => ({
+                source: link.source,
+                target: link.target,
+                lineStyle: {
+                    width: link.value,
+                    curveness: 0.3
+                }
+            }));
+            
+            // 建立類別
+            const categories = communityColors.map((color, index) => ({
+                name: `社群 ${index + 1}`
+            }));
+            
+            const option = {
+                tooltip: {},
+                legend: [{
+                    data: categories.map(a => a.name)
+                }],
+                series: [{
+                    type: 'graph',
+                    layout: 'force',
+                    data: nodes,
+                    links: links,
+                    categories: categories,
+                    roam: true,
+                    label: {
+                        position: 'right'
+                    },
+                    force: {
+                        repulsion: 100,
+                        edgeLength: 80
+                    },
+                    emphasis: {
+                        focus: 'adjacency',
+                        lineStyle: {
+                            width: 5
+                        }
+                    }
+                }]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+            
+            // 年份篩選器事件
+            document.getElementById('networkYearFilter').addEventListener('change', function() {
+                // 在實際應用中，這裡會根據所選年份重新生成網絡數據
+                const year = this.value;
+                console.log(`已選擇 ${year} 年份`);
+                
+                // 模擬數據變化
+                const newNetworkData = generateSpeakerNetwork();
+                
+                // 更新節點和連結數據
+                const newNodes = newNetworkData.nodes.map(node => ({
+                    id: node.id,
+                    name: node.name,
+                    symbolSize: 10 + (node.sessions_count * 3),
+                    value: node.sessions_count,
+                    category: node.community,
+                    label: {
+                        show: node.sessions_count > 3
+                    },
+                    itemStyle: {
+                        color: communityColors[node.community]
+                    }
+                }));
+                
+                const newLinks = newNetworkData.links.map(link => ({
+                    source: link.source,
+                    target: link.target,
+                    lineStyle: {
+                        width: link.value,
+                        curveness: 0.3
+                    }
+                }));
+                
+                // 更新圖表
+                chart.setOption({
+                    series: [{
+                        data: newNodes,
+                        links: newLinks
+                    }]
+                });
+            });
+        }
+        
+        function initCommunityAnalysisChart() {
+            const chart = echarts.init(document.getElementById('communityAnalysisChart'));
+            
+            // 模擬數據 - 社群分析
+            const data = [
+                { name: '社群1', value: 30, itemStyle: { color: '#3498db' } },
+                { name: '社群2', value: 25, itemStyle: { color: '#2ecc71' } },
+                { name: '社群3', value: 20, itemStyle: { color: '#e74c3c' } },
+                { name: '社群4', value: 15, itemStyle: { color: '#f39c12' } },
+                { name: '社群5', value: 10, itemStyle: { color: '#9b59b6' } }
+            ];
+            
+            // 添加子項目 - 每個社群的公司分布
+            const subData = [
+                // 社群1的公司分布
+                { name: '開源基金會', value: 12, parent: '社群1' },
+                { name: '科技公司', value: 8, parent: '社群1' },
+                { name: '軟體公司', value: 6, parent: '社群1' },
+                { name: '其他', value: 4, parent: '社群1' },
+                
+                // 社群2的公司分布
+                { name: '科技公司', value: 10, parent: '社群2' },
+                { name: '雲端服務商', value: 8, parent: '社群2' },
+                { name: '其他', value: 7, parent: '社群2' },
+                
+                // 社群3的公司分布
+                { name: '資安公司', value: 8, parent: '社群3' },
+                { name: '開源基金會', value: 7, parent: '社群3' },
+                { name: '其他', value: 5, parent: '社群3' },
+                
+                // 社群4的公司分布
+                { name: '雲端服務商', value: 7, parent: '社群4' },
+                { name: '軟體公司', value: 5, parent: '社群4' },
+                { name: '其他', value: 3, parent: '社群4' },
+                
+                // 社群5的公司分布
+                { name: '科技公司', value: 4, parent: '社群5' },
+                { name: '開源基金會', value: 3, parent: '社群5' },
+                { name: '其他', value: 3, parent: '社群5' }
+            ];
+            
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    formatter: '{a} <br/>{b}: {c} ({d}%)'
+                },
+                series: [
+                    {
+                        name: '社群分析',
+                        type: 'pie',
+                        selectedMode: 'single',
+                        radius: [0, '40%'],
+                        label: {
+                            position: 'inner',
+                            fontSize: 14
+                        },
+                        labelLine: {
+                            show: false
+                        },
+                        data: data
+                    },
+                    {
+                        name: '公司分布',
+                        type: 'pie',
+                        radius: ['45%', '60%'],
+                        labelLine: {
+                            length: 30
+                        },
+                        label: {
+                            formatter: '{a|{a}}{abg|}\n{hr|}\n  {b|{b}：}{c}  {per|{d}%}  ',
+                            backgroundColor: '#F6F8FC',
+                            borderColor: '#8C8D8E',
+                            borderWidth: 1,
+                            borderRadius: 4,
+                            rich: {
+                                a: {
+                                    color: '#6E7079',
+                                    lineHeight: 22,
+                                    align: 'center'
+                                },
+                                hr: {
+                                    borderColor: '#8C8D8E',
+                                    width: '100%',
+                                    borderWidth: 1,
+                                    height: 0
+                                },
+                                b: {
+                                    color: '#4C5058',
+                                    fontSize: 14,
+                                    fontWeight: 'bold',
+                                    lineHeight: 33
+                                },
+                                per: {
+                                    color: '#fff',
+                                    backgroundColor: '#4C5058',
+                                    padding: [3, 4],
+                                    borderRadius: 4
+                                }
+                            }
+                        },
+                        data: subData.filter(item => item.parent === '社群1')
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+            
+            // 點擊內環時更新外環數據
+            chart.on('click', function(params) {
+                if (params.seriesIndex === 0) {
+                    const parentName = params.name;
+                    const filteredData = subData.filter(item => item.parent === parentName);
+                    
+                    chart.setOption({
+                        series: [
+                            {},
+                            {
+                                data: filteredData
+                            }
+                        ]
+                    });
+                }
+            });
+        }
+        
+        function initCollaborationTrendChart() {
+            const chart = echarts.init(document.getElementById('collaborationTrendChart'));
+            
+            // 模擬數據 - 講者跨年度合作網絡
+            const years = ['2020', '2021', '2022', '2023', '2024'];
+            const data = [
+                [0, 12, 8, 5, 3],    // 2020年講者與其他年份的合作數
+                [12, 0, 15, 10, 7],  // 2021年講者與其他年份的合作數
+                [8, 15, 0, 18, 12],  // 2022年講者與其他年份的合作數
+                [5, 10, 18, 0, 20],  // 2023年講者與其他年份的合作數
+                [3, 7, 12, 20, 0]    // 2024年講者與其他年份的合作數
+            ];
+            
+            const option = {
+                tooltip: {
+                    position: 'top'
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: years
+                },
+                yAxis: {
+                    type: 'category',
+                    data: years
+                },
+                visualMap: {
+                    min: 0,
+                    max: 20,
+                    calculable: true,
+                    orient: 'horizontal',
+                    left: 'center',
+                    bottom: '5%'
+                },
+                series: [
+                    {
+                        name: '合作數量',
+                        type: 'heatmap',
+                        data: years.map((year, i) => 
+                            years.map((year2, j) => [j, i, data[i][j]])
+                        ).flat(),
+                        label: {
+                            show: true
+                        },
+                        emphasis: {
+                            itemStyle: {
+                                shadowBlur: 10,
+                                shadowColor: 'rgba(0, 0, 0, 0.5)'
+                            }
+                        }
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+    </script>
+</body>
+</html>
