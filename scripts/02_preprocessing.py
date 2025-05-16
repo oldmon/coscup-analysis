@@ -170,15 +170,25 @@ def clean_and_standardize_data(sessions_df, speakers_df, tracks_df):
         if 'year' in sessions_df.columns:
             sessions_df['year'] = pd.to_numeric(sessions_df['year'], errors='coerce').astype('Int64')
         
-        # 處理缺失值
-        sessions_df = sessions_df.fillna({
+        # 處理缺失值 - 標量值填充 (speakers 欄位單獨處理)
+        columns_to_fill = {
             'title': '',
             'description': '',
             'language': 'unknown',
             'type': 'unknown',
-            'room': 'unknown',
-            'speakers': []
-        })
+            'room': 'unknown'
+        }
+        # 只填充 DataFrame 中實際存在的欄位
+        fill_values = {k: v for k, v in columns_to_fill.items() if k in sessions_df.columns}
+        if fill_values:
+            sessions_df = sessions_df.fillna(value=fill_values)
+        
+        # 處理 speakers 欄位：確保其存在並將 NaN/None 值轉換為空列表
+        if 'speakers' in sessions_df.columns:
+            sessions_df['speakers'] = sessions_df['speakers'].apply(lambda x: x if isinstance(x, list) else ([] if pd.isna(x) else x))
+        elif not sessions_df.empty: # 如果欄位不存在且 DataFrame 有資料列
+            sessions_df['speakers'] = [[] for _ in range(len(sessions_df))]
+        # 如果 DataFrame 為空且 'speakers' 欄位不存在，則不進行操作
     
     # 處理講者資料
     if not speakers_df.empty:

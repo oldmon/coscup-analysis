@@ -1,0 +1,6 @@
+year,file_name,file_path,file_size_kb,keys,session_count,speaker_count,track_count
+2022,coscup_2022_session.json,data/raw/coscup_2022_session.json,606.83,"['sessions', 'speakers', 'session_types', 'rooms', 'tags']",295,334,0
+2023,coscup_2023_session.json,data/raw/coscup_2023_session.json,890.08,"['sessions', 'speakers', 'session_types', 'rooms', 'tags']",352,415,0
+2021,coscup_2021_session.json,data/raw/coscup_2021_session.json,528.39,"['sessions', 'speakers', 'session_types', 'rooms', 'tags']",212,268,0
+2020,coscup_2020_session.json,data/raw/coscup_2020_session.json,838.55,"['sessions', 'speakers', 'session_types', 'rooms', 'tags']",256,299,0
+2024,coscup_2024_session.json,data/raw/coscup_2024_session.json,877.12,"['sessions', 'speakers', 'session_types', 'rooms', 'tags']",331,440,0
