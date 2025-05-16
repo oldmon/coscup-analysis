@@ -151,7 +151,7 @@ def analyze_tech_trends(topic_df):
 # 主函數
 def main():
     # 載入處理過的議程資料
-    sessions_df = pd.read_csv('sessions.csv')
+    sessions_df = pd.read_csv('data/processed/sessions.csv')
     
     # 分詞處理
     sessions_df = tokenize_text(sessions_df)
