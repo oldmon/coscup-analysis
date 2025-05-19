@@ -35,12 +35,12 @@ def tokenize_text(sessions_df):
     for word in tech_words:
         jieba.add_word(word)
     
-    # 合併標題和描述
-    sessions_df['text'] = sessions_df['title'] + ' ' + sessions_df['description'].fillna('')
+    # 使用 'zh' 欄位作為文本內容
+    sessions_df['text'] = sessions_df['zh'].fillna('')
     
     # 分詞並移除停用詞
     sessions_df['tokens'] = sessions_df['text'].apply(
-        lambda x: [w for w in jieba.cut(x) if w not in stopwords and len(w) > 1]
+        lambda x: [w for w in jieba.cut(str(x)) if w not in stopwords and len(w) > 1]
     )
     
     return sessions_df
@@ -117,7 +117,7 @@ def build_topic_model(sessions_df, n_topics=10):
         topic_distributions.append({
             'session_id': sessions_df.iloc[i]['id'],
             'year': sessions_df.iloc[i]['year'],
-            'title': sessions_df.iloc[i]['title'],
+            'zh': sessions_df.iloc[i]['zh'],  # 改用 'zh' 欄位
             'main_topic': main_topic[0],
             'topic_prob': main_topic[1],
             'all_topics': dict(topic_dist)
@@ -152,6 +152,9 @@ def analyze_tech_trends(topic_df):
 def main():
     # 載入處理過的議程資料
     sessions_df = pd.read_csv('data/processed/sessions.csv')
+    
+    # 印出欄位名稱以供檢查
+    print("資料欄位：", sessions_df.columns.tolist())
     
     # 分詞處理
     sessions_df = tokenize_text(sessions_df)

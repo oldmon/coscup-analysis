@@ -37,11 +37,13 @@ def build_speaker_network(sessions_df, speakers_df):
     # 建立講者之間的合作關係
     G = nx.Graph()
     
-    # 添加節點
+    # 先印出 speakers_df 的欄位名稱以供檢查
+    print("講者資料欄位：", speakers_df.columns.tolist())
+    
+    # 添加節點，使用 zh 作為名稱
     for _, speaker in speakers_df.iterrows():
         G.add_node(speaker['id'], 
-                  name=speaker['name'],
-                  company=speaker.get('company', ''),
+                  name=speaker['zh'],  # 使用 zh 欄位作為講者名稱
                   sessions_count=len(speaker_to_sessions.get(speaker['id'], [])))
     
     # 添加邊 - 如果兩個講者共同參與過議程則建立連接
@@ -83,19 +85,14 @@ def detect_communities(G):
     # 計算每個社群的講者數量
     community_counts = Counter(partition.values())
     
-    # 計算每個社群的主要公司/組織
-    community_companies = defaultdict(Counter)
-    for node, comm in partition.items():
-        if 'company' in G.nodes[node] and G.nodes[node]['company']:
-            community_companies[comm][G.nodes[node]['company']] += 1
+    # 找出每個社群的主要講者
+    main_speakers = {}
+    for comm in set(partition.values()):
+        comm_speakers = [(node, G.nodes[node]['name'], G.nodes[node].get('sessions_count', 0)) 
+                        for node, node_comm in partition.items() if node_comm == comm]
+        main_speakers[comm] = sorted(comm_speakers, key=lambda x: x[2], reverse=True)[:5]
     
-    # 找出每個社群的主要公司
-    main_companies = {}
-    for comm, companies in community_companies.items():
-        if companies:
-            main_companies[comm] = companies.most_common(3)
-    
-    return partition, community_counts, main_companies
+    return partition, community_counts, main_speakers
 
 # 繪製講者網絡圖
 def plot_speaker_network(G, partition):
@@ -230,14 +227,24 @@ def analyze_speaker_participation_over_time(sessions_df, speakers_df):
 # 主函數
 def main():
     # 載入處理過的資料
-    sessions_df = pd.read_csv('sessions.csv')
-    speakers_df = pd.read_csv('speakers.csv')
+    sessions_df = pd.read_csv('data/processed/sessions.csv')
+    speakers_df = pd.read_csv('data/processed/speakers.csv')
+    
+    # 印出資料欄位名稱以供檢查
+    print("議程資料欄位：", sessions_df.columns.tolist())
+    print("講者資料欄位：", speakers_df.columns.tolist())
+    
+    # 檢查資料的前幾筆記錄
+    print("\n議程資料預覽：")
+    print(sessions_df.head())
+    print("\n講者資料預覽：")
+    print(speakers_df.head())
     
     # 建立講者網絡
     G, speaker_to_sessions = build_speaker_network(sessions_df, speakers_df)
     
     # 社群檢測
-    partition, community_counts, main_companies = detect_communities(G)
+    partition, community_counts, main_speakers = detect_communities(G)
     
     # 繪製講者網絡圖
     plot_speaker_network(G, partition)
@@ -257,10 +264,10 @@ def main():
         f.write('社群分析結果:\n\n')
         for comm, count in sorted(community_counts.items(), key=lambda x: x[1], reverse=True):
             f.write(f'社群 {comm}: {count} 位講者\n')
-            if comm in main_companies:
-                f.write('主要單位/公司:\n')
-                for company, freq in main_companies[comm]:
-                    f.write(f'  - {company}: {freq} 位講者\n')
+            if comm in main_speakers:
+                f.write('主要講者:\n')
+                for _, name, count in main_speakers[comm]:
+                    f.write(f'  - {name}: {count} 場議程\n')
             f.write('\n')
     
     print("講者網絡分析完成，已儲存視覺化結果")
