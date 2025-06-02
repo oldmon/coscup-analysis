@@ -11,4 +11,5 @@ gensim
 pyLDAvis
 requests
 tqdm
+openai
 Flask
