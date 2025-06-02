@@ -160,3 +160,7 @@ cython_debug/
 #.idea/
 
 coscup-env/
+
+coscup_score.csv:Zone.Identifier
+messageImage_1748419393657.jpg:Zone.Identifier
+prepro_sub.py:Zone.Identifier

@@ -241,9 +241,9 @@ def analyze_conference_growth(sessions_df, speakers_df, tracks_df):
 # 主函數
 def main():
     # 載入處理過的資料
-    sessions_df = pd.read_csv('sessions.csv')
-    speakers_df = pd.read_csv('speakers.csv')
-    tracks_df = pd.read_csv('tracks.csv')
+    sessions_df = pd.read_csv('data/processed/sessions.csv')
+    speakers_df = pd.read_csv('data/processed/speakers.csv')
+    tracks_df = pd.read_csv('data/processed/tracks.csv')
     
     # 分析議程軌的演變
     track_counts, yearly_track_counts = analyze_tracks_evolution(sessions_df, tracks_df)

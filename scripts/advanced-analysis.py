@@ -16,6 +16,7 @@ import jieba
 import jieba.analyse
 import json
 import re
+import os
 from tqdm import tqdm
 import matplotlib.cm as cm
 import matplotlib.colors as colors
@@ -36,12 +37,12 @@ def advanced_topic_modeling(sessions_df):
         stopwords = set(['的', '了', '和', '是', '就', '都', '而', '及', '與', '著',
                         '或', '一個', '我們', '你們', '他們', '可以', '這個', '那個'])
         
-        # 合併標題和描述
-        sessions_df['text'] = sessions_df['title'] + ' ' + sessions_df['description'].fillna('')
+        # 使用 zh 欄位的內容
+        sessions_df['text'] = sessions_df['zh'].fillna('')
         
         # 分詞
         sessions_df['tokens'] = sessions_df['text'].apply(
-            lambda x: [w for w in jieba.cut(x) if w not in stopwords and len(w) > 1]
+            lambda x: [w for w in jieba.cut(str(x)) if w not in stopwords and len(w) > 1]
         )
     
     # 準備文本資料
@@ -130,7 +131,7 @@ def advanced_topic_modeling(sessions_df):
         doc_topics.append({
             'session_id': sessions_df.iloc[i]['id'],
             'year': sessions_df.iloc[i]['year'],
-            'title': sessions_df.iloc[i]['title'],
+            'zh': sessions_df.iloc[i]['zh'],  # 使用 zh 替代 title
             'main_topic': main_topic[0],
             'topic_prob': float(main_topic[1]),
             'topic_dist': {str(tid): float(tprob) for tid, tprob in topics}
