@@ -103,11 +103,28 @@ for k, prompts in tqdm(TOPIC_PROMPTS.items(), desc="Embedding topics"):
 def cos(a, b): return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 scores = {k: [] for k in TOPIC_PROMPTS}
+topic_keys_ordered = list(TOPIC_PROMPTS.keys()) # Ensure consistent order for topic_vecs access
+
 for v in tqdm(session_vecs, desc="Scoring"):
-    for k, tv in topic_vecs.items():
-        s = cos(v, tv)
-        score = int(round((s + 1) / 2 * 100))  
-        scores[k].append(score)
+    # Calculate raw cosine similarities for the current session vector v with all topic vectors
+    raw_similarities_for_session = np.array([cos(v, topic_vecs[key]) for key in topic_keys_ordered])
+
+    # Calculate mean and std dev for these similarities for the current session
+    mean_sim = np.mean(raw_similarities_for_session)
+    std_sim = np.std(raw_similarities_for_session)
+
+    for i, k_topic_name in enumerate(topic_keys_ordered):
+        s = raw_similarities_for_session[i] # Raw cosine similarity for this topic
+
+        if std_sim > 1e-6: # Avoid division by zero or very small std dev
+            z_score = (s - mean_sim) / std_sim
+        else: # If all similarities are (almost) the same for this session, Z-score is 0
+            z_score = 0
+        
+        # Scale Z-score to 0-100. Clip Z-scores to a typical range (e.g., -2.5 to 2.5)
+        # and then linearly scale this range to 0-100.
+        scaled_score = ((np.clip(z_score, -2.5, 2.5) + 2.5) / 5.0) * 100
+        scores[k_topic_name].append(int(round(scaled_score)))
 
 
 df = pd.DataFrame(rows)
