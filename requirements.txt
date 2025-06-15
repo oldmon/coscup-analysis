@@ -13,3 +13,4 @@ requests
 tqdm
 openai
 Flask
+sentence-transformers
