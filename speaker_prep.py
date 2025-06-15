@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer # 新增導入
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from tqdm import tqdm
 
 SENTENCE_TRANSFORMER_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2' # 使用與 prepro_sub.py 相同的模型
 
@@ -91,20 +92,54 @@ for topic_key in TOPIC_PROMPTS.keys():
     if topic_key not in all_mapped_topics:
         print(f"Warning: Topic '{topic_key}' from TOPIC_PROMPTS is not mapped in TOPIC_TO_MAIN_CATEGORY_MAP.")
 
-# Pre-calculate topic embeddings
+# Pre-calculate topic embeddings with progress bar
+print("Pre-calculating topic embeddings...")
 topic_embeddings = {}
-for k, prompts in TOPIC_PROMPTS.items():
+for k, prompts in tqdm(TOPIC_PROMPTS.items(), desc="Computing topic embeddings"):
     prompt_embeddings = st_model.encode(prompts, convert_to_numpy=True)
-    topic_embeddings[k] = prompt_embeddings.mean(axis=0) # Average embeddings for multiple prompts per topic
+    topic_embeddings[k] = prompt_embeddings.mean(axis=0)
 
 def get_sentence_embedding(text):
+    """Get sentence embedding for input text"""
+    return st_model.encode([text])[0]
+
+def get_topic_embeddings():
+    """Get embeddings for all topic descriptions"""
+    topic_embeddings = {}
+    for topic, descriptions in TOPIC_PROMPTS.items():
+        # Get embedding for the topic description
+        topic_emb = st_model.encode(descriptions)[0]
+        topic_embeddings[topic] = topic_emb
+    return topic_embeddings
+
+def get_topic_tags(text_embedding, top_n=3):
     """
-    Generates a sentence embedding for the given text using SentenceTransformer.
+    Get top N most relevant topic tags for a given text embedding
+    Args:
+        text_embedding: The embedding vector of the input text
+        top_n: Number of top topics to return
+    Returns:
+        List of topic tags ordered by relevance
     """
-    # Ensure text is not empty, as encode might behave unexpectedly
-    if not text.strip():
-        return np.zeros(st_model.get_sentence_embedding_dimension()).tolist() # Return zero vector for empty text
-    return st_model.encode(text).tolist()
+    # Get topic embeddings (could be cached for better performance)
+    topic_embeddings = get_topic_embeddings()
+    
+    # Calculate similarity scores
+    similarities = {}
+    for topic, topic_emb in topic_embeddings.items():
+        sim = cosine_similarity(
+            text_embedding.reshape(1, -1),
+            topic_emb.reshape(1, -1)
+        )[0][0]
+        similarities[topic] = sim
+    
+    # Sort topics by similarity score and get top N
+    sorted_topics = sorted(
+        similarities.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
+    return [topic for topic, _ in sorted_topics[:top_n]]
 
 def extract_keywords(text, top_n=10):
     """
@@ -130,69 +165,92 @@ def extract_keywords(text, top_n=10):
         # Handle cases where TF-IDF cannot be computed (e.g., text has only stop words)
         return []
 
+def convert_to_traditional(text):
+    # TODO: 可用 opencc 或其他繁簡轉換工具
+    return text  # 目前直接回傳原文
+
 def process_speaker_data():
-    """
-    Processes speaker data from JSON files, extracts embeddings and keywords,
-    and saves the processed data to a JSON file.
-    """
-    all_speakers = []
-
-    for json_file in JSON_FILES:
-        file_path = DATA_DIR / json_file
-        with open(file_path, "r", encoding="utf-8") as f:
+    """處理講者資料，提取標籤"""
+    all_speakers = [] 
+    all_sessions = []
+    speaker_tag_map = {}  
+    speaker_sessions = {}  
+    
+    # 顯示總體進度
+    print("\nProcessing speaker data...")
+    
+    # 1. 讀取檔案
+    print("\nPhase 1: Reading JSON files...")
+    for json_file in tqdm(JSON_FILES, desc="Loading files"):
+        with open(DATA_DIR / json_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-
-        speakers = data.get("speakers", [])
-        sessions = data.get("sessions", [])
-
-        for speaker in speakers:
-            speaker_id = speaker["id"]
-            # Collect all session titles and descriptions for the speaker
-            speaker_text = speaker.get("zh", {}).get("bio", "") + "\n".join(
-                [
-                    session.get("zh", {}).get("title", "") + " " + session.get("zh", {}).get("description", "")
-                    for session in sessions
-                    if speaker_id in session.get("speakers", [])
-                ]
-            )
-
-            # Generate speaker embedding
-            speaker_embedding = get_sentence_embedding(speaker_text)
-
-            # Calculate topic scores
-            topic_scores = {}
-            if speaker_embedding and any(speaker_embedding): # Only calculate if embedding is not zero vector
-                 # Reshape for cosine_similarity: (n_samples, n_features)
-                speaker_embedding_reshaped = np.array(speaker_embedding).reshape(1, -1)
-                for topic, topic_emb in topic_embeddings.items():
-                    topic_emb_reshaped = topic_emb.reshape(1, -1)
-                    score = cosine_similarity(speaker_embedding_reshaped, topic_emb_reshaped)[0][0]
-                    # Optional: Scale score to 0-100 or similar range if needed for visualization
-                    topic_scores[topic] = float(score) # Convert numpy float to standard float for JSON
-
-            # Extract keywords (optional, but can still be useful)
-            keywords = extract_keywords(speaker_text)
-
-            all_speakers.append(
-                {
-                    "id": speaker_id,
-                    "name": speaker.get("zh", {}).get("name", speaker.get("en", {}).get("name", "N/A")), # Fallback to English name
-                    "topic_scores": topic_scores,
-                    "keywords": keywords # Include extracted keywords
+            year = int(json_file.split("_")[1])
+            
+            # 處理每個 session
+            sessions = data.get("sessions", [])
+            for session in tqdm(sessions, desc=f"Processing {year} sessions", leave=False):
+                session_id = session.get("id", "N/A")
+                title = session.get("zh", {}).get("title", "") or session.get("en", {}).get("title", "")
+                desc = session.get("zh", {}).get("description", "") or session.get("en", {}).get("description", "")
+                
+                # 獲得session的主題標籤
+                text = f"{title} {desc}"
+                session_embedding = get_sentence_embedding(text)
+                session_tags = get_topic_tags(session_embedding, top_n=3)
+                
+                # 儲存session資訊
+                session_obj = {
+                    "id": session_id,
+                    "title": title,
+                    "description": desc,
+                    "year": year,
+                    "tags": session_tags,
+                    "speakers": session.get("speakers", [])
                 }
-            )
+                all_sessions.append(session_obj)
+                
+                # 更新講者的標籤和演講
+                for speaker_id in session.get("speakers", []):
+                    speaker_tag_map.setdefault(speaker_id, set()).update(session_tags)
+                    speaker_sessions.setdefault(speaker_id, []).append(session_obj)
+    
+    # 2. 彙整講者資料
+    print("\nPhase 2: Aggregating speaker data...")
 
-    # Prepare the final output structure
+    def get_speaker_name(speaker_id, all_sessions):
+        """
+        Retrieve the speaker's name from all_sessions.
+        """
+        for session in all_sessions:
+            for speaker in session.get("speakers", []):
+                if isinstance(speaker, dict) and speaker.get("id") == speaker_id:
+                    return speaker.get("name", "")
+        return ""
+
+    for speaker_id, tags in tqdm(speaker_tag_map.items(), desc="Processing speakers"):
+        speaker_obj = {
+            "id": speaker_id,
+            "name": get_speaker_name(speaker_id, all_sessions),
+            "tags": sorted(list(tags)),
+            "sessions": speaker_sessions[speaker_id]
+        }
+        all_speakers.append(speaker_obj)
+
+    # 3. 準備最終輸出
+    print("\nPhase 3: Preparing final output...")
     final_output = {
         "speakers": all_speakers,
+        "sessions": all_sessions,
         "topic_to_main_category_map": TOPIC_TO_MAIN_CATEGORY_MAP
     }
-
-    # Save the processed data to a JSON file
+    
+    # 4. 儲存結果
+    print("\nPhase 4: Saving results...")
     with open(OUTPUT_JSON_PATH, "w", encoding="utf-8") as outfile:
         json.dump(final_output, outfile, ensure_ascii=False, indent=4)
-
     print(f"Successfully generated {OUTPUT_JSON_PATH}")
+
+    return final_output
 
 if __name__ == "__main__":
     process_speaker_data()

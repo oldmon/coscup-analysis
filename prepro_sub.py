@@ -1,6 +1,12 @@
 import os, pathlib, glob, json, time, numpy as np, pandas as pd
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
+import numpy as np
+from pathlib import Path
+from sklearn.preprocessing import MinMaxScaler
+
+# Define data directory
+DATA_DIR = Path("data/raw")
 
 SENTENCE_TRANSFORMER_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
 print(f"Loading sentence transformer model: {SENTENCE_TRANSFORMER_MODEL}...")
@@ -120,3 +126,75 @@ COLS = ["SSID", "Year"] + list(TOPIC_PROMPTS) + ["SessionCount"]
 output_csv_path = pathlib.Path("coscup_score_st.csv") # Changed output filename to avoid overwriting
 df[COLS].to_csv(output_csv_path, index=False, encoding="utf-8")
 print(f"Output saved to {output_csv_path}")
+
+def process_similarities(similarities, window_size=50):
+    """
+    使用滑動窗口計算局部平均值和標準差
+    Args:
+        similarities: 相似度分數陣列
+        window_size: 滑動窗口大小
+    """
+    normalized_scores = []
+    for i in range(len(similarities)):
+        # 計算局部窗口的範圍
+        start_idx = max(0, i - window_size // 2)
+        end_idx = min(len(similarities), i + window_size // 2)
+        window = similarities[start_idx:end_idx]
+        
+        # 計算局部平均值和標準差
+        local_mean = np.mean(window)
+        local_std = np.std(window)
+        
+        # Z-score 正規化
+        if local_std != 0:
+            score = (similarities[i] - local_mean) / local_std
+        else:
+            score = 0
+            
+        normalized_scores.append(score)
+    
+    # MinMax 縮放到 0-100
+    scaler = MinMaxScaler(feature_range=(0, 100))
+    return scaler.fit_transform(np.array(normalized_scores).reshape(-1, 1)).flatten()
+
+def main():
+    sessions = []
+    print("Reading session data...")
+    for file_path in tqdm(list(DATA_DIR.glob("coscup_*_session.json"))):
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            year = int(file_path.stem.split("_")[1])
+            # Process sessions
+            for session in data.get("sessions", []):
+                title = session.get("zh", {}).get("title", "") or session.get("en", {}).get("title", "")
+                desc = session.get("zh", {}).get("description", "") or session.get("en", {}).get("description", "")
+                sessions.append({
+                    "id": session.get("id"),
+                    "year": year,
+                    "title": title,
+                    "description": desc
+                })
+
+    print("Processing embeddings...")
+    for session in tqdm(sessions):
+        text = f"{session['title']} {session['description']}"
+        session['embedding'] = st_model.encode(text)
+
+    print("Calculating topic similarities...")
+    for topic, descriptions in tqdm(TOPIC_PROMPTS.items()):
+        # 修正 topic_emb 的形狀
+        topic_emb = st_model.encode(descriptions).reshape(-1)  # 將 (1, 384) 變成 (384,)
+        similarities = []
+        
+        for session in sessions:
+            sim = cos(session['embedding'], topic_emb)
+            similarities.append(sim)
+        
+        normalized_scores = process_similarities(similarities)
+        
+        for idx, session in enumerate(sessions):
+            session[topic] = normalized_scores[idx]
+
+    # ...existing code...
+if __name__ == "__main__":
+    main()
